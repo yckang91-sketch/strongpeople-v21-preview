@@ -643,6 +643,7 @@
   <section class="hero" aria-label="인트로 — 강한사람들 브랜드 필름">
     <div class="hero-media" aria-hidden="true">
       <video id="heroVideo" autoplay muted loop playsinline preload="auto" poster="assets/hero_poster.jpg" tabindex="-1">
+        <source src="https://player-api.charlla.io/mp4/e8bu68qhtgk" type="video/mp4">
         <source src="assets/hero_loop.mp4" type="video/mp4">
       </video>
     </div>
@@ -1011,6 +1012,7 @@
   <section class="contact" id="contact" aria-labelledby="contactTitle">
     <div class="bg" aria-hidden="true">
       <video id="contactVideo" muted loop playsinline preload="none" poster="assets/hero_poster.jpg" tabindex="-1">
+        <source src="https://player-api.charlla.io/mp4/e8bu68qhtgk" type="video/mp4">
         <source src="assets/hero_loop.mp4" type="video/mp4">
       </video>
     </div>
@@ -1168,8 +1170,10 @@ const heroVideo = document.getElementById('heroVideo');
 const contactVideo = document.getElementById('contactVideo');
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const smallScreen = window.matchMedia('(max-width: 820px)');
-if (smallScreen.matches && heroVideo.querySelector('source')){
-  heroVideo.querySelector('source').src = 'assets/hero_loop_720.mp4';
+/* 모바일에서는 CDN 영상을 그대로 1순위로 쓰고, 백업 로컬 소스만 720p로 가볍게 바꾼다 */
+const heroSources = heroVideo.querySelectorAll('source');
+if (smallScreen.matches && heroSources.length > 1){
+  heroSources[1].src = 'assets/hero_loop_720.mp4';
   heroVideo.load();
 }
 function tryPlay(v){ if (!v || reduce) return; const p = v.play(); if (p && p.catch) p.catch(() => {}); }
