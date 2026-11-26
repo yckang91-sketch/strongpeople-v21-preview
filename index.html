@@ -642,9 +642,9 @@
   <!-- ============ HERO ============ -->
   <section class="hero" aria-label="인트로 — 강한사람들 브랜드 필름">
     <div class="hero-media" aria-hidden="true">
-      <video id="heroVideo" autoplay muted loop playsinline preload="auto" poster="assets/hero_poster.jpg" tabindex="-1">
-        <source src="https://player-api.charlla.io/mp4/e8bu68qhtgk" type="video/mp4">
+      <video id="heroVideo" autoplay muted loop playsinline webkit-playsinline preload="auto" poster="assets/hero_poster.jpg" tabindex="-1">
         <source src="assets/hero_loop.mp4" type="video/mp4">
+        <source src="https://player-api.charlla.io/mp4/e8bu68qhtgk" type="video/mp4">
       </video>
     </div>
     <div class="hero-scrim" aria-hidden="true"></div>
@@ -1011,9 +1011,9 @@
   <!-- ============ 05 CONTACT ============ -->
   <section class="contact" id="contact" aria-labelledby="contactTitle">
     <div class="bg" aria-hidden="true">
-      <video id="contactVideo" muted loop playsinline preload="none" poster="assets/hero_poster.jpg" tabindex="-1">
-        <source src="https://player-api.charlla.io/mp4/e8bu68qhtgk" type="video/mp4">
+      <video id="contactVideo" muted loop playsinline webkit-playsinline preload="metadata" poster="assets/hero_poster.jpg" tabindex="-1">
         <source src="assets/hero_loop.mp4" type="video/mp4">
+        <source src="https://player-api.charlla.io/mp4/e8bu68qhtgk" type="video/mp4">
       </video>
     </div>
     <div class="wrap">
@@ -1170,31 +1170,97 @@ const heroVideo = document.getElementById('heroVideo');
 const contactVideo = document.getElementById('contactVideo');
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const smallScreen = window.matchMedia('(max-width: 820px)');
-/* 모바일에서는 CDN 영상을 그대로 1순위로 쓰고, 백업 로컬 소스만 720p로 가볍게 바꾼다 */
-const heroSources = heroVideo.querySelectorAll('source');
-if (smallScreen.matches && heroSources.length > 1){
-  heroSources[1].src = 'assets/hero_loop_720.mp4';
-  heroVideo.load();
+const CDN_SRC = 'https://player-api.charlla.io/mp4/e8bu68qhtgk';
+/* 모바일은 리다이렉트·서명만로가 없는 로컬 720p가 1순위 */
+const LOCAL_SRC = smallScreen.matches ? 'assets/hero_loop_720.mp4' : 'assets/hero_loop.mp4';
+
+function syncLocalSource(v){
+  if (!v) return;
+  const s = v.querySelector('source');
+  const cur = s ? (s.getAttribute('src') || '') : '';
+  if (s && cur.indexOf('assets/hero_loop') === 0 && cur !== LOCAL_SRC){
+    s.src = LOCAL_SRC;
+    v.load();
+  }
 }
-function tryPlay(v){ if (!v || reduce) return; const p = v.play(); if (p && p.catch) p.catch(() => {}); }
-if (!reduce){
-  heroVideo.addEventListener('canplay', () => tryPlay(heroVideo), { once: true });
-  tryPlay(heroVideo);
-} else {
-  heroVideo.removeAttribute('autoplay');
-  heroVideo.pause();
+syncLocalSource(heroVideo);
+syncLocalSource(contactVideo);
+
+/* 접근성·배터리 설정(prefers-reduced-motion)과 상관없이 배경 영상은 항상 재생 시도 */
+function playVideo(v){
+  if (!v) return;
+  try { v.muted = true; v.defaultMuted = true; v.playsInline = true; v.setAttribute('muted',''); } catch(e){}
+  const p = v.play();
+  if (p && p.catch) p.catch(() => {});
 }
 
+const visible = { hero: true, contact: false };
+function kick(){
+  if (document.hidden) return;
+  playVideo(heroVideo);
+  if (visible.contact) playVideo(contactVideo);
+}
+
+['loadedmetadata','loadeddata','canplay','canplaythrough'].forEach(evt => {
+  if (heroVideo) heroVideo.addEventListener(evt, () => playVideo(heroVideo));
+});
+if (heroVideo){
+  heroVideo.addEventListener('stalled', () => playVideo(heroVideo));
+  heroVideo.addEventListener('pause', () => { if (!document.hidden) setTimeout(() => playVideo(heroVideo), 120); });
+}
+document.addEventListener('DOMContentLoaded', kick);
+window.addEventListener('load', kick);
+window.addEventListener('pageshow', kick);
+window.addEventListener('focus', kick);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) kick(); });
+
+/* 첫 터치·스크롤·클릭에서도 한 번 더 재생 */
+['touchstart','touchend','pointerdown','click','scroll','keydown','wheel'].forEach(evt => {
+  window.addEventListener(evt, kick, { passive: true, once: true });
+});
+
+/* 절전·데이터 절약 모드로 첫 프레임에 멈춰 있으면 계속 되살린다 (약 60초간) */
+let guardTick = 0;
+const guard = setInterval(() => {
+  guardTick++;
+  if (guardTick > 40){ clearInterval(guard); return; }
+  if (document.hidden) return;
+  if (heroVideo && heroVideo.paused && heroVideo.readyState >= 2) playVideo(heroVideo);
+  if (contactVideo && visible.contact && contactVideo.paused && contactVideo.readyState >= 2) playVideo(contactVideo);
+}, 1500);
+
+/* 소스가 전부 실패하면 CDN 백업으로 한 번 더 시도 */
+function attachFallback(v){
+  if (!v) return;
+  let tried = false;
+  v.addEventListener('error', () => {
+    if (tried) return;
+    tried = true;
+    v.src = CDN_SRC;
+    v.load();
+    playVideo(v);
+  });
+}
+attachFallback(heroVideo);
+
 /* contact video plays only while visible */
-if (contactVideo && 'IntersectionObserver' in window){
-  const vio = new IntersectionObserver((entries) => {
-    entries.forEach(en => {
-      if (en.isIntersecting){ tryPlay(contactVideo); }
-      else { contactVideo.pause(); }
-    });
-  }, { threshold: .12 });
-  vio.observe(contactVideo);
-  if (reduce) contactVideo.pause();
+if (contactVideo){
+  ['loadedmetadata','loadeddata','canplay','canplaythrough'].forEach(evt => {
+    contactVideo.addEventListener(evt, () => { if (visible.contact) playVideo(contactVideo); });
+  });
+  if ('IntersectionObserver' in window){
+    const vio = new IntersectionObserver((entries) => {
+      entries.forEach(en => {
+        visible.contact = en.isIntersecting;
+        if (en.isIntersecting){ playVideo(contactVideo); }
+        else { contactVideo.pause(); }
+      });
+    }, { threshold: .12 });
+    vio.observe(contactVideo);
+  } else {
+    visible.contact = true;
+  }
+  attachFallback(contactVideo);
 }
 
 /* ---------------- timecode from the film ---------------- */
