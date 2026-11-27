@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://strongpeople.co.kr/sitemap.xml
